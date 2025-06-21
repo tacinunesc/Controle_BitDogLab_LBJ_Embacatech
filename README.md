@@ -1,7 +1,7 @@
 # Controle BitDogLab Raspberry Pi Pico do LED, Botões e Joystick
 
 ## Detalhes Deste Projeto
-Este projeto visa conectar a placa com uma internet wifi especificada no código, depois de conectar será possivel vê em uma página local informações sobre o LED, sobre os botões A e B e sobre coordenadas do Joystick.
+Este projeto visa conectar a placa com uma internet wifi especificada no código, depois de conectar será possivel vê em uma página local informações sobre o LED, sobre os botões A e B, sobre coordenadas do Joystick e temperatura.
 Como pode ser observada na imagem abaixo.
 
 <div align="center">
