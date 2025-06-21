@@ -28,13 +28,7 @@ target_link_libraries(Controle_BJL_VERSAO2
 Em seguida, foram definidos os pinos e as constantes para armazenar informações sobre o wifi, estado dos botões, coordenadas X, Y, direção do Joystick e temperatura. 
 Posteriormente, criou a função calcular_direcao, onde define como direções principais (Norte, Sul, Leste e Oeste) e como direções diagonais (Nordeste, Noroeste, Sudeste e Sudoeste).
     
-            NORTE
-     NOROESTE | NORDESTE
-              |
-    OESTE-----+-----LESTE
-              |
-     SUDOESTE |  SUDESTE
-             SUL
+        
 
 ###  **Outras demais funções e aspectos do projeto**
 Funções para criar conexao, parte visual da rosa dos ventos que é exibida na parte inferior da página, botões para acender e apagar o LED na placa de forma remota, uma tabela na parte central de 3 colunas contendo informações se os botões físicos (A e B) estão precissionados ou liberados, coordenadas (X e Y) quando movimento o console do Joystick, com isso aparece em direção conforme a rosa dos ventos e temperatura.
