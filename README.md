@@ -1,7 +1,7 @@
 # Controle BitDogLab Raspberry Pi Pico do LED, Botões e Joystick
 
 ## Detalhes Deste Projeto
-Este projeto visa conectar a placa com uma internet wifi especificada no código, depois de conectar será possivel vê em uma página local informações sobre o LED azul, sobre os botões A e B e sobre coordenadas do Joystick.
+Este projeto visa conectar a placa com uma internet wifi especificada no código, depois de conectar será possivel vê em uma página local informações sobre o LED, sobre os botões A e B e sobre coordenadas do Joystick.
 Como pode ser observada na imagem abaixo.
 
 <div align="center">
@@ -37,7 +37,7 @@ Posteriormente, criou a função calcular_direcao, onde define como direções p
              SUL
 
 ###  **Outras demais funções e aspectos do projeto**
-Funções para criar conexao, parte visual da rosa dos ventos que é exibida na parte inferior da página, botões para acender e apagar o LED azul na placa de forma remota, uma tabela na parte central de 3 colunas contendo informações se os botões físicos (A e B) estão precissionados ou liberados, coordenadas (X e Y) quando movimento o console do Joystick e com isso aparece em direção conforme a rosa dos ventos.
+Funções para criar conexao, parte visual da rosa dos ventos que é exibida na parte inferior da página, botões para acender e apagar o LED na placa de forma remota, uma tabela na parte central de 3 colunas contendo informações se os botões físicos (A e B) estão precissionados ou liberados, coordenadas (X e Y) quando movimento o console do Joystick, com isso aparece em direção conforme a rosa dos ventos e temperatura.
 
 ### **Principais Funcionalidades**
 - Conexão com rede Wi-Fi
