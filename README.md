@@ -40,7 +40,9 @@ Funções para criar conexao, parte visual da rosa dos ventos que é exibida na 
 - Monitoramento do estado dos botões (pressionado/liberado)
 - Exibição das coordenadas (X e Y) e direção do joystick em uma rosa dos ventos
 ### **Stack Tecnológica**
-- Linguagem C
+- Linguagem C e Javascript
+- Estrutura da página em HTML
+- Estilo da página em CSS
 - FreeRTOS
 - Biblioteca lwIP (TCP/IP)
 - Biblioteca GPIO e ADC do Raspberry Pi Pico
