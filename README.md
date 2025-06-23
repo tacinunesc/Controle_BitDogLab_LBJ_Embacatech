@@ -39,10 +39,17 @@ Funções para criar conexao, parte visual da rosa dos ventos que é exibida na 
 - Leitura da temperatura
 - Monitoramento do estado dos botões (pressionado/liberado)
 - Exibição das coordenadas (X e Y) e direção do joystick em uma rosa dos ventos
-### **Stack Tecnológica**
-- Linguagem C e Javascript
-- Estrutura da página em HTML
-- Estilo da página em CSS
-- FreeRTOS
-- Biblioteca lwIP (TCP/IP)
-- Biblioteca GPIO e ADC do Raspberry Pi Pico
+  
+### **Linguagens**
+- C: Para a programação do microcontrolador Raspberry Pi Pico.
+- JavaScript: Para a interatividade da interface web.
+
+### **Bibliotecas**
+- FreeRTOS: Para gerenciamento de tarefas em tempo real.
+- lwIP (Lightweight IP): Para a implementação de protocolos TCP/IP.
+- Biblioteca GPIO: Para controle de pinos de entrada e saída na placa.
+- Biblioteca ADC: Para leitura de valores analógicos.
+
+### **Estrutura da Página**
+- HTML: Para a estrutura da interface web.
+- CSS: Para o estilo e apresentação visual da página.
