@@ -1,270 +1,213 @@
 #include "pico/cyw43_arch.h"//Modulo WIFI
-#include "pico/stdlib.h"//Bibloteca padrao das Raspberry Pi Pico
-#include "hardware/adc.h"//Leitura (ADC)
+#include "pico/stdlib.h"//Biblioteca padrao
+#include "hardware/adc.h"//Leitura ADC
 #include "hardware/gpio.h"//Controle de pinos
-#include "lwip/tcp.h"//Rede TCP/IP
+#include "pico/unique_id.h"
+#include "lwip/apps/mqtt.h"
+#include "lwip/dns.h"
+#include "lwip/altcp_tls.h"//Criptografia, segurança
+#include "lwip/tcp.h"
 #include "FreeRTOS.h"
-#include "task.h"//Gereciamento de tarefas
+#include "task.h"//Gerenciamento de tarefas
 #include <stdio.h>//Entrada/Saida
 #include <string.h>
+#include <stdlib.h>
 
-// ==== Definições dos pinos ====
+// ==== Pinos ====
 #define PINO_BOTAO_A 5
 #define PINO_BOTAO_B 6
 #define PINO_JOYSTICK_X 27
 #define PINO_JOYSTICK_Y 26
 
-// ==== Definicoes da Rede Wi-Fi ====
-#define NOME_REDE "Rede"
-#define SENHA_REDE "Senha"
+// ==== Wi-Fi ====
+#define NOME_REDE WIFI_SSID
+#define SENHA_REDE WIFI_PASSWORD
 
-// ==== Variaveis globais ====
+#ifndef MQTT_SERVER
+#error "MQTT_SERVER não está definido"
+#endif
+#ifndef MQTT_USERNAME
+#error "MQTT_USERNAME não está definido"
+#endif
+#ifndef MQTT_PASSWORD
+#error "MQTT_PASSWORD não está definido"
+#endif
+
+#define MQTT_PORT 1883//Porta MQTT
+#define MQTT_TOPIC "bitdoglab/status"//Topico de pubicacao
+
+// ==== Variaveis Globais e Estado ====
 char mensagem_botaoA[20] = "liberado";
 char mensagem_botaoB[20] = "liberado";
-int joystick_x = 0;
-int joystick_y = 0;
+int joystick_x = 0, joystick_y = 0;
 char direcao_joystick[20] = "Centro";
 float temperatura_c = 0.0;
-bool led_ligado = false;
 
-char resposta_http_html[4096];
-char resposta_http_json[512];
+
+// ==== MQTT ====
+typedef struct {
+    ip_addr_t remote_addr;
+    mqtt_client_t* mqtt_client;
+    bool connected;
+} MQTT_CLIENT_STATE_T;
+
+MQTT_CLIENT_STATE_T* estado_mqtt;
 
 // ==== Funcao para calcular a direcao do joystick ====
 void calcular_direcao_joystick(int x, int y, char *direcao) {
-    const int zona_morta = 200;//Define uma "zona morta" para o centro do joystick
+    const int zona_morta = 200;
     bool cima = y < (2048 - zona_morta);
     bool baixo = y > (2048 + zona_morta);
     bool esquerda = x < (2048 - zona_morta);
     bool direita = x > (2048 + zona_morta);
 
-    if (!cima && !baixo && !esquerda && !direita) strcpy(direcao, "Centro"); //Centro
-    else if (cima && !esquerda && !direita) strcpy(direcao, "Norte");//Cima
-    else if (baixo && !esquerda && !direita) strcpy(direcao, "Sul");//Baixo
-    else if (esquerda && !cima && !baixo) strcpy(direcao, "Oeste");//Esquerda
-    else if (direita && !cima && !baixo) strcpy(direcao, "Leste");//Direita
-    else if (cima && direita) strcpy(direcao, "Nordeste");//Cima e direita
-    else if (cima && esquerda) strcpy(direcao, "Noroeste");//Cima e esquerda
-    else if (baixo && direita) strcpy(direcao, "Sudeste");//Baixo e direita
-    else if (baixo && esquerda) strcpy(direcao, "Sudoeste");//Baixo e esquerda
-    else strcpy(direcao, "Centro"); //Retorna ao centro
+    if (!cima && !baixo && !esquerda && !direita) strcpy(direcao, "Centro");
+    else if (cima && !esquerda && !direita) strcpy(direcao, "Norte");
+    else if (baixo && !esquerda && !direita) strcpy(direcao, "Sul");
+    else if (esquerda && !cima && !baixo) strcpy(direcao, "Oeste");
+    else if (direita && !cima && !baixo) strcpy(direcao, "Leste");
+    else if (cima && direita) strcpy(direcao, "Nordeste");
+    else if (cima && esquerda) strcpy(direcao, "Noroeste");
+    else if (baixo && direita) strcpy(direcao, "Sudeste");
+    else if (baixo && esquerda) strcpy(direcao, "Sudoeste");
+    else strcpy(direcao, "Centro");
 }
-
 // ==== Funcao para ler temperatura ====
 float ler_temperatura() {
-    adc_select_input(4); // Canal do sensor interno
+    adc_select_input(4);
     uint16_t leitura = adc_read();
-    const float conversao = 3.3f / (1 << 12); // 12 bits
-    float tensao = leitura * conversao;
+    float tensao = leitura * 3.3f / (1 << 12);
     return 27.0f - (tensao - 0.706f) / 0.001721f;
 }
 
-// ==== Funcao para criar a reposta JSON ====
-void criar_resposta_json() {
-    snprintf(resposta_http_json, sizeof(resposta_http_json),
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
-        "{"
-        "\"botaoA\":\"%s\","
-        "\"botaoB\":\"%s\","
-        "\"joystick\":{\"x\":%d,\"y\":%d,\"direcao\":\"%s\"},"
-        "\"temperatura\":%.2f,"
-        "\"led\":%s"
-        "}",
-        mensagem_botaoA,
-        mensagem_botaoB,
-        joystick_x,
-        joystick_y,
-        direcao_joystick,
-        temperatura_c,
-        led_ligado ? "true" : "false"
-    );
+// ==== MQTT ====
+static void mqtt_conexao_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) {
+    MQTT_CLIENT_STATE_T* state = (MQTT_CLIENT_STATE_T*)arg;
+    if (status == MQTT_CONNECT_ACCEPTED) {
+        printf("MQTT conectado!\n");
+        state->connected = true;
+    } else {
+        printf("Falha na conexão MQTT: %d\n", status);
+        state->connected = false;
+    }
 }
 
-// ==== Funcao para criar resposta HTML ====
-void criar_resposta_http_html() {
-    snprintf(resposta_http_html, sizeof(resposta_http_html),
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
-        "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
-        "<title>Controle BitDogLab LBJ Embacatech</title><meta name='viewport' content='width=device-width, initial-scale=1'>"
-        //Estilo CSS
-        "<style>"
-        "body{font-family:Arial;background:#f0f0f0;text-align:center;padding:20px;}"
-        "header{background:#007BFF;color:white;padding:20px;border-radius:15px;}"
-        "h1{margin:0;font-size:2.5em;}"
-        "button{padding:10px 30px;margin:10px;border:none;border-radius:8px;background:#007BFF;color:white;"
-        "font-size:1em;cursor:pointer;}button:hover{background:#0056b3;}"
-        "table{margin:20px auto;background:white;border-collapse:collapse;box-shadow:0 0 10px rgba(0,0,0,0.1);}"
-        "th,td{padding:15px 25px;border:1px solid #ccc;}"
-        "th{background:#007BFF;color:white;}"
-        ".rosa{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;max-width:300px;margin:30px auto;"
-        "background:#333;padding:20px;border-radius:15px;color:pink;font-weight:bold;}"
-        ".rosa div{display:flex;align-items:center;justify-content:center;padding:10px;border-radius:8px;"
-        "background:#444;transition:0.3s;}"
-        ".ativo{background:yellow;color:black;}"
-        "</style></head><body>"
-        //Conteudo da pagina HTML
-        "<header><h1>Controle BitDogLab LBJ Embacatech</h1></header>"
-        "<div><button onclick='ligarLED()'>Ligar LED</button>"
-        "<button onclick='desligarLED()'>Desligar LED</button></div>"
-        "<h2>Estado do LED: <span id='ledStatus'>Desconhecido</span></h2>"
-
-        "<table>"//Tabela para exibir os dados dos sensores
-        "<tr><th>Botões</th><td id='statusBotoes'></td></tr>"
-        "<tr><th>Joystick</th><td id='statusJoystick'></td></tr>"
-        "<tr><th>Direção e Temperatura</th><td id='statusDirecao'></td></tr>"
-        "</table>"
-
-        "<div class='rosa'>"
-        "<div id='Norte'>N</div><div id='Nordeste'>NE</div><div id='Leste'>L</div>"
-        "<div id='Noroeste'>NO</div><div id='Centro'>&bull;</div><div id='Sudeste'>SE</div>"
-        "<div id='Oeste'>O</div><div id='Sudoeste'>SO</div><div id='Sul'>S</div>"
-        "</div>"
-        //Parte JavaScript para interatividade e atualizacao
-        "<script>"
-        "function atualizarRosa(d){"
-        "['Norte','Nordeste','Leste','Sudeste','Sul','Sudoeste','Oeste','Noroeste','Centro'].forEach(e=>{"
-        "let el=document.getElementById(e);"
-        "if(el){el.classList.remove('ativo');if(e==d)el.classList.add('ativo');}"
-        "});}"
-        "function atualizarStatus(){"
-        "fetch('/api/status').then(r=>r.json()).then(data=>{"
-        "document.getElementById('statusBotoes').innerText=`A: ${data.botaoA} | B: ${data.botaoB}`;"
-        "document.getElementById('statusJoystick').innerText=`X: ${data.joystick.x}, Y: ${data.joystick.y}`;"
-        "document.getElementById('statusDirecao').innerText=`${data.joystick.direcao} | ${data.temperatura.toFixed(1)}°C`;"
-        "document.getElementById('ledStatus').innerText=data.ledAzul?'Ligado':'Desligado';"
-        "atualizarRosa(data.joystick.direcao);"
-        "});}"
-        "function ligarLED(){fetch('/led/on');}"
-        "function desligarLED(){fetch('/led/off');}"
-        "setInterval(atualizarStatus,1000);atualizarStatus();"
-        "</script>"
-
-        "</body></html>"
-    );
+static void mqtt_pub_cb(void *arg, err_t err) {
+    if (err != ERR_OK) {
+        printf("Erro ao publicar: %d\n", err);
+    }
 }
 
-// ==== Funcoes do Servidor TCP  ====
-//Funcao chamada quando um requisicao HTTP e recebida
-static err_t tratar_requisicao(void *arg, struct tcp_pcb *pcb, struct pbuf *buf, err_t err) {
-    if (buf == NULL) {tcp_close(pcb); return ERR_OK;}
+void iniciar_conexao_mqtt(MQTT_CLIENT_STATE_T* state) {
+    struct mqtt_connect_client_info_t info = {0};
+    char client_id[20];
+    pico_get_unique_board_id_string(client_id, sizeof(client_id));
+    info.client_id = client_id;
+    info.keep_alive = 60;
+    info.client_user =  MQTT_USERNAME;
+    info.client_pass = MQTT_PASSWORD;
 
-    char *requisicao = (char *)buf->payload;
-    char url[64];
-    //Extrai a URL da linha GET da requisicao HTTP
-    if (sscanf(requisicao, "GET %63s HTTP", url) == 1) {
-        if (strcmp(url, "/led/on") == 0) {
-            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-            led_ligado = true;
-            const char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
-            tcp_write(pcb, resp, strlen(resp), TCP_WRITE_FLAG_COPY);
-        } else if (strcmp(url, "/led/off") == 0) {
-            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
-            led_ligado = false;
-            const char *resp = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
-            tcp_write(pcb, resp, strlen(resp), TCP_WRITE_FLAG_COPY);
-        } else if (strcmp(url, "/api/status") == 0) {
-            criar_resposta_json();
-            tcp_write(pcb, resposta_http_json, strlen(resposta_http_json), TCP_WRITE_FLAG_COPY);
-        } else {
-            criar_resposta_http_html();
-            tcp_write(pcb, resposta_http_html, strlen(resposta_http_html), TCP_WRITE_FLAG_COPY);
-        }
+    state->mqtt_client = mqtt_client_new();
+    if (!state->mqtt_client) {
+        printf("Erro: mqtt_client_new\n");
+        return;
     }
 
-    tcp_recved(pcb, buf->tot_len);//Notifica a pilha TCP que os dados foram recebidos
-    pbuf_free(buf);//Libera o buffer
-    tcp_close(pcb);//Fecha a conexao TCP
-    return ERR_OK;
-}
-//Funcao chamada quando uma nova conexao TCP e aceita
-static err_t tratar_conexao(void *arg, struct tcp_pcb *pcb_nova, err_t err) {
-    tcp_recv(pcb_nova, tratar_requisicao);
-    return ERR_OK;
-}
-//Funcao para iniciar o servidor HTTP
-static void iniciar_servidor_http() {
-    struct tcp_pcb *pcb = tcp_new();
-    if (!pcb) return;
-    if (tcp_bind(pcb, IP_ADDR_ANY, 80) != ERR_OK) return;
-    pcb = tcp_listen(pcb);
-    tcp_accept(pcb, tratar_conexao);
+    err_t err = mqtt_client_connect(
+        state->mqtt_client,
+        &state->remote_addr,
+        MQTT_PORT,
+        mqtt_conexao_cb,
+        state,
+        &info
+    );
+
+    if (err != ERR_OK) {
+        printf("Erro mqtt_client_connect: %d\n", err);
+    }
 }
 
-// ==== Tarefa WIFI (FreeRTOS Task) ====
-//Mantem a pilha do wifi funcionando e processando eventos
+void tarefa_mqtt(void *params) {
+    MQTT_CLIENT_STATE_T* state = (MQTT_CLIENT_STATE_T*)params;
+    while (true) {
+        if (state->connected) {
+            char payload[256];
+            snprintf(payload, sizeof(payload),
+                "{\"botaoA\":\"%s\",\"botaoB\":\"%s\",\"x\":%d,\"y\":%d,\"direcao\":\"%s\",\"temperatura\":%.2f}",
+                mensagem_botaoA, mensagem_botaoB, joystick_x, joystick_y, direcao_joystick, temperatura_c);
+
+            cyw43_arch_lwip_begin();
+            mqtt_publish(state->mqtt_client, MQTT_TOPIC, payload, strlen(payload), 0, 0, mqtt_pub_cb, NULL);
+            cyw43_arch_lwip_end();
+
+            printf("Publicado: %s\n", payload);
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+//----Tarefa WIFI, deixa a conexao ativa------------
 void tarefa_wifi(void *params) {
     while (true) {
         cyw43_arch_poll();
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
-
-// ==== Task Leitura (FreeRTOS Task) ====
-//Le continuamente o estado dos botoes, joystick e temperatura
+//----Tarefa leitura, ler continuamente os dados da placa-------
 void tarefa_leitura(void *params) {
     while (true) {
         bool estadoA = !gpio_get(PINO_BOTAO_A);
         bool estadoB = !gpio_get(PINO_BOTAO_B);
-        
-        //Atualiza as mensagens dos botoes com base no estado
         snprintf(mensagem_botaoA, sizeof(mensagem_botaoA), estadoA ? "pressionado" : "liberado");
         snprintf(mensagem_botaoB, sizeof(mensagem_botaoB), estadoB ? "pressionado" : "liberado");
-        
-        //Leitura do joystick
-        adc_select_input(0);
-        joystick_x = adc_read();
-        adc_select_input(1);
-        joystick_y = adc_read();
-        
-        //Calcula a direcao do joystick com base nas leituras
-        calcular_direcao_joystick(joystick_x, joystick_y, direcao_joystick);
 
+        adc_select_input(0); joystick_x = adc_read();
+        adc_select_input(1); joystick_y = adc_read();
+
+        calcular_direcao_joystick(joystick_x, joystick_y, direcao_joystick);
         temperatura_c = ler_temperatura();
 
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
-
-
-// ==== Funcao Principal (Main) ====
-//Ponto inicial do programa: inicializa hardware, WiFi, servidor e tarefas
+//-----Funcao Principal----------------
 int main() {
-    stdio_init_all(); // Inicializa todas as saídas padrão (incluindo serial)
-    sleep_ms(2000);   // Pequena pausa para garantir a inicialização serial
+    stdio_init_all();
+    sleep_ms(2000);
 
-    // Inicializa o módulo Wi-Fi CYW43
-    if (cyw43_arch_init()) return 1; // Retorna erro se a inicialização falhar
-    cyw43_arch_enable_sta_mode();    // Habilita o modo estação (cliente) do Wi-Fi
+    if (cyw43_arch_init()) return 1;
+    cyw43_arch_enable_sta_mode();
 
-    // Tenta conectar à rede Wi-Fi especificada
     printf("Conectando ao Wi-Fi...\n");
     if (cyw43_arch_wifi_connect_timeout_ms(NOME_REDE, SENHA_REDE, CYW43_AUTH_WPA2_AES_PSK, 30000)) {
-        printf("Falha na conexão Wi-Fi!\n"); // Mensagem de erro se a conexão falhar
+        printf("Erro Wi-Fi\n");
         return 1;
     }
-    printf("Conectado!\nIP: %s\n", ip4addr_ntoa(netif_ip4_addr(netif_list))); // Exibe o IP da placa
+    printf("Wi-Fi conectado! IP: %s\n", ip4addr_ntoa(netif_ip4_addr(netif_list)));
 
-    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0); // Garante que o LED do Wi-Fi comece desligado
-
-    // Configuração dos pinos dos botões
+    // Inicializa pinos e ADC
+    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
     gpio_init(PINO_BOTAO_A); gpio_set_dir(PINO_BOTAO_A, GPIO_IN); gpio_pull_up(PINO_BOTAO_A);
     gpio_init(PINO_BOTAO_B); gpio_set_dir(PINO_BOTAO_B, GPIO_IN); gpio_pull_up(PINO_BOTAO_B);
+    adc_init();
+    adc_gpio_init(PINO_JOYSTICK_X);
+    adc_gpio_init(PINO_JOYSTICK_Y);
+    adc_set_temp_sensor_enabled(true);
 
-    // Inicialização do ADC para o joystick e sensor de temperatura
-    adc_init(); // Inicializa o controlador ADC
-    adc_gpio_init(PINO_JOYSTICK_X); // Habilita o pino X do joystick para ADC
-    adc_gpio_init(PINO_JOYSTICK_Y); // Habilita o pino Y do joystick para ADC
-    adc_set_temp_sensor_enabled(true); // Ativa o sensor de temperatura interno
+    estado_mqtt = calloc(1, sizeof(MQTT_CLIENT_STATE_T));
+    if (!estado_mqtt) return 1;
 
-    iniciar_servidor_http(); // Inicia o servidor HTTP
+    if (!ip4addr_aton(MQTT_SERVER, &estado_mqtt->remote_addr)) {
+        printf("MQTT_SERVER inválido\n");
+        return 1;
+    }
 
-    // Cria as tarefas do FreeRTOS
-    // xTaskCreate(funcao_da_tarefa, "Nome da Tarefa", Tamanho da Pilha, Parametros, Prioridade, Handle da Tarefa)
-    xTaskCreate(tarefa_wifi, "WiFiPoll", 512, NULL, 1, NULL);   // Tarefa para manter o Wi-Fi ativo
-    xTaskCreate(tarefa_leitura, "Leitura", 512, NULL, 1, NULL); // Tarefa para ler os sensores
+    iniciar_conexao_mqtt(estado_mqtt);
 
-    vTaskStartScheduler(); // Inicia o agendador do FreeRTOS (o controle de execução passa para as tarefas)
+    xTaskCreate(tarefa_wifi, "WiFi", 512, NULL, 1, NULL);
+    xTaskCreate(tarefa_leitura, "Leitura", 512, NULL, 1, NULL);
+    xTaskCreate(tarefa_mqtt, "MQTT", 1024, estado_mqtt, 1, NULL);
 
-    while (true); // Loop infinito para manter o programa em execução após o agendador
-    return 0; // O programa nunca deve chegar aqui se o agendador iniciar corretamente
+    vTaskStartScheduler();
+    while (true);
+    return 0;
 }

@@ -46,14 +46,25 @@ pico_set_program_version(Controle_BJL_VERSAO2 "0.1")
 pico_enable_stdio_uart(Controle_BJL_VERSAO2 0)
 pico_enable_stdio_usb(Controle_BJL_VERSAO2 1)
 
+# ALTERE DE ACORDO COM AS SUAS CREDENCIAIS
+target_compile_definitions(Controle_BJL_VERSAO2 PRIVATE
+    WIFI_SSID="Rede"#nome do rede wifi
+    WIFI_PASSWORD="senha"#senha da rede wifi
+    MQTT_SERVER="34.66.112.228"#ip externo do vm do google cloud
+    MQTT_USERNAME="meu_usuario"#usuario definido
+    MQTT_PASSWORD="passwd"#senha definida
+)
+
 # Add the standard library to the build
 target_link_libraries(Controle_BJL_VERSAO2
-        pico_stdlib    
+         pico_stdlib    
          hardware_gpio
-        hardware_adc
-        pico_cyw43_arch_lwip_threadsafe_background
-        FreeRTOS-Kernel
-        FreeRTOS-Kernel-Heap4     
+         hardware_adc
+         pico_cyw43_arch_lwip_threadsafe_background
+         FreeRTOS-Kernel
+         FreeRTOS-Kernel-Heap4     
+         pico_lwip_mqtt
+         pico_cyw43_arch_none
         )
 
 # Add the standard include files to the build
@@ -64,7 +75,10 @@ target_include_directories(Controle_BJL_VERSAO2 PRIVATE
 # Add any user requested libraries
 target_link_libraries(Controle_BJL_VERSAO2 
         pico_cyw43_arch_none
-        )
+        ${CMAKE_CURRENT_LIST_DIR}
+        ${PICO_SDK_PATH}/lib/lwip/src/include
+        ${PICO_SDK_PATH}/lib/lwip/src/include/lwip
+)
 
 pico_add_extra_outputs(Controle_BJL_VERSAO2)
 
