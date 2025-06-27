@@ -50,7 +50,7 @@ pico_enable_stdio_usb(Controle_BJL_VERSAO2 1)
 target_compile_definitions(Controle_BJL_VERSAO2 PRIVATE
     WIFI_SSID="Rede"#nome do rede wifi
     WIFI_PASSWORD="senha"#senha da rede wifi
-    MQTT_SERVER="34.66.112.228"#ip externo do vm do google cloud
+    MQTT_SERVER="XX.XX.XXX.XXX"#ip externo do vm do google cloud
     MQTT_USERNAME="meu_usuario"#usuario definido
     MQTT_PASSWORD="passwd"#senha definida
 )
