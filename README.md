@@ -18,8 +18,15 @@ target_compile_definitions(Controle_BJL_VERSAO2 PRIVATE
     MQTT_PASSWORD="passwd"#senha definida
 )
 ````
-Então para utilizar este código é só substituir essas credenciais.
+ 
+- Então para utilizar este código é só substituir essas credenciais e utilize o arquivo instalador_freertos.sh para instalar o pacote de freertos, pelo terminal bash do vscode, com:
+```c
+chmod +x instalador_freertos.sh
+````
 
+```c
+./instalador_freertos.sh
+````
 - Inclusão e aprimoramento das bibliotecas lwip denominadas como: lwipopts.h e e lwipopts-examples-common.h.
   
 No arquivo pincipal .c foram feitas as seguintes modificações com as inclusão de novas bibliotecas:
