@@ -18,7 +18,7 @@ target_compile_definitions(Controle_BJL_VERSAO2 PRIVATE
     MQTT_PASSWORD="passwd"#senha definida
 )
 ````
-Então utilizar este código é substituir essas credenciais.
+Então para utilizar este código é só substituir essas credenciais.
 
 - Inclusão e aprimoramento das bibliotecas lwip denominadas como: lwipopts.h e e lwipopts-examples-common.h.
   
