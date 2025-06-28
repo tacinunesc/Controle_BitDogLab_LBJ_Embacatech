@@ -39,7 +39,8 @@ Funções para criar conexao, parte visual da rosa dos ventos que é exibida na 
 - Leitura da temperatura
 - Monitoramento do estado dos botões (pressionado/liberado)
 - Exibição das coordenadas (X e Y) e direção do joystick em uma rosa dos ventos
-## **Utilização do Programa Passo a Passo**  
+  
+## **Utilização do Programa - Passo a Passo**  
 - Substitua as credenciais de NOME_REDE, SENHA_REDE e utilizar o arquivo instalador_freertos.sh para instalar o pacote de freertos, pelo terminal bash do vscode, com:
 ```c
 chmod +x instalador_freertos.sh
